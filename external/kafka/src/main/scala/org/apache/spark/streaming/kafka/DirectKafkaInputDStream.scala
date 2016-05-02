@@ -32,6 +32,8 @@ import org.apache.spark.streaming.dstream._
 import org.apache.spark.streaming.kafka.KafkaCluster.LeaderOffset
 import org.apache.spark.streaming.scheduler.{RateController, StreamInputInfo}
 import org.apache.spark.streaming.scheduler.rate.RateEstimator
+import org.apache.spark.streaming.scheduler.rate.BatchIntervalEstimator
+import org.apache.spark.streaming.Duration
 
 /**
  *  A stream of {@link org.apache.spark.streaming.kafka.KafkaRDD} where
@@ -79,8 +81,10 @@ class DirectKafkaInputDStream[
    */
   override protected[streaming] val rateController: Option[RateController] = {
     if (RateController.isBackPressureEnabled(ssc.conf)) {
+      val batchMillis = ssc.conf.getLong("spark.streaming.batchsizecontrol.minBatchInterval", ssc.graph.batchDuration.milliseconds)
       Some(new DirectKafkaRateController(id,
-        RateEstimator.create(ssc.conf, context.graph.batchDuration)))
+        RateEstimator.create(ssc.conf, context.graph.batchDuration), 
+        BatchIntervalEstimator.create(ssc.conf, new Duration(batchMillis))))
     } else {
       None
     }
@@ -220,8 +224,9 @@ class DirectKafkaInputDStream[
   /**
    * A RateController to retrieve the rate from RateEstimator.
    */
-  private[streaming] class DirectKafkaRateController(id: Int, estimator: RateEstimator)
-    extends RateController(id, estimator) {
+  private[streaming] class DirectKafkaRateController(id: Int, estimator: RateEstimator, batchIntervalEstimator: BatchIntervalEstimator)
+    extends RateController(id, estimator, batchIntervalEstimator) {
     override def publish(rate: Long): Unit = ()
+    override def publishBatchInterval(batchInterval: Long): Unit = ()
   }
 }

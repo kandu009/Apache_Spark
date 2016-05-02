@@ -18,6 +18,7 @@
 package org.apache.spark.streaming.scheduler
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
+import java.util.concurrent.atomic.AtomicLong
 
 import scala.collection.mutable.HashMap
 import scala.concurrent.{ExecutionContext, Future}
@@ -139,6 +140,9 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
    * It's only accessed in ReceiverTrackerEndpoint.
    */
   private val receiverTrackingInfos = new HashMap[Int, ReceiverTrackingInfo]
+
+  @transient
+  private var maxBatchInterval: AtomicLong = _
 
   /**
    * Store all preferred locations for all receivers. We need this information to schedule
@@ -314,6 +318,28 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
   def sendRateUpdate(streamUID: Int, newRate: Long): Unit = synchronized {
     if (isTrackerStarted) {
       endpoint.send(UpdateReceiverRateLimit(streamUID, newRate))
+    }
+  }
+
+  def sendBatchIntervalUpdate(streamUID: Int, batchInterval: Long): Unit = synchronized {
+    if (isTrackerStarted) {
+      if(maxBatchInterval != null) {
+        if(getEstimatedBatchInterval() < batchInterval) {
+          maxBatchInterval.set(batchInterval)
+        }
+      } else {
+        maxBatchInterval.set(batchInterval)
+      }
+    }
+  }
+
+  def getEstimatedBatchInterval(): Long = synchronized {
+    maxBatchInterval.get()
+  }
+
+  def resetEstimatedBatchInterval(): Unit = synchronized {
+    if (isTrackerStarted) {
+      maxBatchInterval = null
     }
   }
 

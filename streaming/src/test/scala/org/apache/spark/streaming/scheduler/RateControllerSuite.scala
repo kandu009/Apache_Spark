@@ -22,6 +22,8 @@ import org.scalatest.time.SpanSugar._
 
 import org.apache.spark.streaming._
 import org.apache.spark.streaming.scheduler.rate.RateEstimator
+import org.apache.spark.streaming.scheduler.rate.BatchIntervalEstimator
+import org.apache.spark.streaming.scheduler.rate.PIDBatchIntervalEstimator
 
 class RateControllerSuite extends TestSuiteBase {
 
@@ -48,7 +50,7 @@ class RateControllerSuite extends TestSuiteBase {
       val estimator = new ConstantEstimator(100)
       val dstream = new RateTestInputDStream(ssc) {
         override val rateController =
-          Some(new ReceiverRateController(id, estimator))
+          Some(new ReceiverRateController(id, estimator, new PIDBatchIntervalEstimator(100, 1D, 0.2D, 0.0D)))
       }
       dstream.register()
       ssc.start()

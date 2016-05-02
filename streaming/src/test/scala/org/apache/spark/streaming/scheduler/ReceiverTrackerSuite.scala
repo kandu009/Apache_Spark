@@ -28,6 +28,8 @@ import org.apache.spark.storage.{StorageLevel, StreamBlockId}
 import org.apache.spark.streaming._
 import org.apache.spark.streaming.dstream.ReceiverInputDStream
 import org.apache.spark.streaming.receiver._
+import org.apache.spark.streaming.scheduler.rate.BatchIntervalEstimator
+import org.apache.spark.streaming.scheduler.rate.PIDBatchIntervalEstimator
 
 /** Testsuite for receiver scheduling */
 class ReceiverTrackerSuite extends TestSuiteBase {
@@ -114,9 +116,12 @@ private[streaming] class RateTestInputDStream(_ssc: StreamingContext)
   var publishedRates = 0
 
   override val rateController: Option[RateController] = {
-    Some(new RateController(id, new ConstantEstimator(100)) {
+    Some(new RateController(id, new ConstantEstimator(100), new PIDBatchIntervalEstimator(100, 1D, 0.2D, 0.0D)) {
       override def publish(rate: Long): Unit = {
         publishedRates += 1
+      }
+      override def publishBatchInterval(batchInterval: Long): Unit = {
+        ssc.scheduler.receiverTracker.sendBatchIntervalUpdate(id, 100)
       }
     })
   }

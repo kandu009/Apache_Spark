@@ -38,6 +38,8 @@ import org.apache.spark.{SparkConf, SparkContext, SparkFunSuite, TestUtils}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.dstream._
 import org.apache.spark.streaming.scheduler._
+import org.apache.spark.streaming.scheduler.rate.BatchIntervalEstimator
+import org.apache.spark.streaming.scheduler.rate.PIDBatchIntervalEstimator
 import org.apache.spark.util.{Clock, ManualClock, MutableURLClassLoader, ResetSystemProperties,
   Utils}
 
@@ -571,7 +573,7 @@ class CheckpointSuite extends TestSuiteBase with DStreamCheckpointTester
 
     val dstream = new RateTestInputDStream(ssc) {
       override val rateController =
-        Some(new ReceiverRateController(id, new ConstantEstimator(200)))
+        Some(new ReceiverRateController(id, new ConstantEstimator(200), new PIDBatchIntervalEstimator(100, 1D, 0.2D, 0.0D)))
     }
 
     val output = new TestOutputStreamWithPartitions(dstream.checkpoint(batchDuration * 2))

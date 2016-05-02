@@ -26,7 +26,9 @@ import org.apache.spark.streaming.rdd.WriteAheadLogBackedBlockRDD
 import org.apache.spark.streaming.receiver.Receiver
 import org.apache.spark.streaming.scheduler.{RateController, ReceivedBlockInfo, StreamInputInfo}
 import org.apache.spark.streaming.scheduler.rate.RateEstimator
+import org.apache.spark.streaming.scheduler.rate.BatchIntervalEstimator
 import org.apache.spark.streaming.util.WriteAheadLogUtils
+import org.apache.spark.streaming.Duration
 
 /**
  * Abstract class for defining any [[org.apache.spark.streaming.dstream.InputDStream]]
@@ -46,7 +48,8 @@ abstract class ReceiverInputDStream[T: ClassTag](_ssc: StreamingContext)
    */
   override protected[streaming] val rateController: Option[RateController] = {
     if (RateController.isBackPressureEnabled(ssc.conf)) {
-      Some(new ReceiverRateController(id, RateEstimator.create(ssc.conf, ssc.graph.batchDuration)))
+      val durationMillis = ssc.conf.getLong("spark.streaming.batchsizecontrol.minBatchInterval", ssc.graph.batchDuration.milliseconds)
+      Some(new ReceiverRateController(id, RateEstimator.create(ssc.conf, ssc.graph.batchDuration), BatchIntervalEstimator.create(ssc.conf, new Duration(durationMillis))))
     } else {
       None
     }
@@ -141,10 +144,17 @@ abstract class ReceiverInputDStream[T: ClassTag](_ssc: StreamingContext)
   /**
    * A RateController that sends the new rate to receivers, via the receiver tracker.
    */
-  private[streaming] class ReceiverRateController(id: Int, estimator: RateEstimator)
-      extends RateController(id, estimator) {
+  private[streaming] class ReceiverRateController(id: Int, estimator: RateEstimator, batchIntervalEstimator: BatchIntervalEstimator)
+      extends RateController(id, estimator, batchIntervalEstimator) {
+    
     override def publish(rate: Long): Unit =
       ssc.scheduler.receiverTracker.sendRateUpdate(id, rate)
+  
+    override def publishBatchInterval(batchInterval: Long): Unit = 
+      ssc.scheduler.receiverTracker.sendBatchIntervalUpdate(id, batchInterval)
+
   }
 }
+
+
 

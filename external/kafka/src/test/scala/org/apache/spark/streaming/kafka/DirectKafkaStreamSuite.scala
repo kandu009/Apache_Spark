@@ -40,6 +40,8 @@ import org.apache.spark.streaming.dstream.DStream
 import org.apache.spark.streaming.kafka.KafkaCluster.LeaderOffset
 import org.apache.spark.streaming.scheduler._
 import org.apache.spark.streaming.scheduler.rate.RateEstimator
+import org.apache.spark.streaming.scheduler.rate.BatchIntervalEstimator
+import org.apache.spark.streaming.scheduler.rate.PIDBatchIntervalEstimator
 import org.apache.spark.util.Utils
 
 class DirectKafkaStreamSuite
@@ -365,7 +367,7 @@ class DirectKafkaStreamSuite
 
   test("maxMessagesPerPartition with no lag") {
     val topic = "maxMessagesPerPartition"
-    val rateController = Some(new ConstantRateController(0, new ConstantEstimator(100), 100))
+    val rateController = Some(new ConstantRateController(0, new ConstantEstimator(100), new PIDBatchIntervalEstimator(100, 1D, 0.2D, 0.0D), 100))
     val kafkaStream = getDirectKafkaStream(topic, rateController)
 
     val input = Map(TopicAndPartition(topic, 0) -> 0L, TopicAndPartition(topic, 1) -> 0L)
@@ -374,7 +376,7 @@ class DirectKafkaStreamSuite
 
   test("maxMessagesPerPartition respects max rate") {
     val topic = "maxMessagesPerPartition"
-    val rateController = Some(new ConstantRateController(0, new ConstantEstimator(100), 1000))
+    val rateController = Some(new ConstantRateController(0, new ConstantEstimator(100), new PIDBatchIntervalEstimator(100, 1D, 0.2D, 0.0D), 1000))
     val kafkaStream = getDirectKafkaStream(topic, rateController)
 
     val input = Map(TopicAndPartition(topic, 0) -> 1000L, TopicAndPartition(topic, 1) -> 1000L)
@@ -415,7 +417,7 @@ class DirectKafkaStreamSuite
       new DirectKafkaInputDStream[String, String, StringDecoder, StringDecoder, (String, String)](
           ssc, kafkaParams, m, messageHandler) {
         override protected[streaming] val rateController =
-          Some(new DirectKafkaRateController(id, estimator))
+          Some(new DirectKafkaRateController(id, estimator, new PIDBatchIntervalEstimator(100, 1D, 0.2D, 0.0D)))
       }
     }
 
@@ -516,8 +518,11 @@ private[streaming] class ConstantEstimator(@volatile private var rate: Long)
       schedulingDelay: Long): Option[Double] = Some(rate)
 }
 
-private[streaming] class ConstantRateController(id: Int, estimator: RateEstimator, rate: Long)
-  extends RateController(id, estimator) {
+private[streaming] class ConstantRateController(id: Int, estimator: RateEstimator, batchIntervalEstimator: BatchIntervalEstimator, rate: Long)
+  extends RateController(id, estimator, batchIntervalEstimator) {
   override def publish(rate: Long): Unit = ()
   override def getLatestRate(): Long = rate
+  override def publishBatchInterval(batchInterval: Long): Unit = ()
 }
+
+    // ssc.scheduler.receiverTracker.sendBatchIntervalUpdate(id, 100)

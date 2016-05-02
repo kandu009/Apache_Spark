@@ -57,7 +57,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     }
   }
 
-  private val timer = new RecurringTimer(clock, ssc.graph.batchDuration.milliseconds,
+  private var timer = new RecurringTimer(clock, ssc.graph.batchDuration.milliseconds,
     longTime => eventLoop.post(GenerateJobs(new Time(longTime))), "JobGenerator")
 
   // This is marked lazy so that this is initialized after checkpoint duration has been set
@@ -165,6 +165,18 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
    */
   def onBatchCompletion(time: Time) {
     eventLoop.post(ClearMetadata(time))
+    updateBatchInterval()
+  }
+
+  def updateBatchInterval() {
+    val newBatchInterval = jobScheduler.receiverTracker.getEstimatedBatchInterval()
+    timer.stop(interruptTimer = false)
+    //TODO: RK not sure if this would work too! But this is our best bet now!
+    timer = new RecurringTimer(clock, newBatchInterval, 
+      longTime => eventLoop.post(GenerateJobs(new Time(longTime))), "JobGenerator")
+    // This is to make sure we have new batch interval only based on new stats/previous batch.
+    jobScheduler.receiverTracker.resetEstimatedBatchInterval()
+    timer.start()
   }
 
   /**

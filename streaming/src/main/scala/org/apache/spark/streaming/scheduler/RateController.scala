@@ -24,6 +24,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import org.apache.spark.SparkConf
 import org.apache.spark.streaming.scheduler.rate.RateEstimator
+import org.apache.spark.streaming.scheduler.rate.BatchIntervalEstimator
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 /**
@@ -31,18 +32,23 @@ import org.apache.spark.util.{ThreadUtils, Utils}
  * an estimate of the speed at which this stream should ingest messages,
  * given an estimate computation from a `RateEstimator`
  */
-private[streaming] abstract class RateController(val streamUID: Int, rateEstimator: RateEstimator)
+private[streaming] abstract class RateController(val streamUID: Int, rateEstimator: RateEstimator, batchIntervalEstimator: BatchIntervalEstimator)
     extends StreamingListener with Serializable {
 
   init()
 
   protected def publish(rate: Long): Unit
 
+  protected def publishBatchInterval(batchInterval: Long): Unit
+
   @transient
   implicit private var executionContext: ExecutionContext = _
 
   @transient
   private var rateLimit: AtomicLong = _
+
+  @transient
+  private var estimatedBatchInterval: AtomicLong = _
 
   /**
    * An initialization method called both from the constructor and Serialization code.
@@ -68,9 +74,16 @@ private[streaming] abstract class RateController(val streamUID: Int, rateEstimat
         rateLimit.set(s.toLong)
         publish(getLatestRate())
       }
+      val newBatchInterval = batchIntervalEstimator.compute(time, elems, workDelay, waitDelay)
+      newBatchInterval.foreach { s =>
+        estimatedBatchInterval.set(s.toLong)
+        publishBatchInterval(getEstimatedBatchInterval())
+      }
     }
 
   def getLatestRate(): Long = rateLimit.get()
+
+  def getEstimatedBatchInterval(): Long = estimatedBatchInterval.get()
 
   override def onBatchCompleted(batchCompleted: StreamingListenerBatchCompleted) {
     val elements = batchCompleted.batchInfo.streamIdToInputInfo
